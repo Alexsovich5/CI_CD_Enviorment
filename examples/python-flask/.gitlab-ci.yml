@@ -1,0 +1,38 @@
+# python-flask CI/CD Pipeline Example
+stages:
+  - build
+  - test
+  - quality
+  - deploy
+
+variables:
+  DOCKER_REGISTRY: "localhost:5050"
+
+build_python-flask:
+  stage: build
+  script:
+    - echo "Building python-flask application"
+    # Add build commands specific to python-flask
+
+test_python-flask:
+  stage: test
+  script:
+    - echo "Testing python-flask application"
+    # Add test commands specific to python-flask
+
+quality_check:
+  stage: quality
+  image: sonarsource/sonar-scanner-cli:latest
+  script:
+    - sonar-scanner
+  only:
+    - main
+    - develop
+
+deploy_python-flask:
+  stage: deploy
+  script:
+    - echo "Deploying python-flask application"
+    # Add deployment commands
+  only:
+    - main
