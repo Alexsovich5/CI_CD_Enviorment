@@ -1,0 +1,34 @@
+[
+  {
+    "id": "sonarqube-quality-gate",
+    "execute-command": "/scripts/quality-gate-handler.sh",
+    "command-working-directory": "/tmp",
+    "response-message": "Quality gate webhook received",
+    "trigger-rule": {
+      "match": {
+        "type": "payload-hash-sha1",
+        "secret": "your-webhook-secret",
+        "parameter": {
+          "source": "header",
+          "name": "X-Hub-Signature"
+        }
+      }
+    }
+  },
+  {
+    "id": "gitlab-pipeline-trigger",
+    "execute-command": "/scripts/pipeline-handler.sh",
+    "command-working-directory": "/tmp",
+    "response-message": "Pipeline webhook received",
+    "trigger-rule": {
+      "match": {
+        "type": "value",
+        "value": "Pipeline Hook",
+        "parameter": {
+          "source": "header",
+          "name": "X-Gitlab-Event"
+        }
+      }
+    }
+  }
+]

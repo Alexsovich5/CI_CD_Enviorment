@@ -1,0 +1,184 @@
+stages:
+  - build
+  - test
+  - quality
+  - security
+  - package
+  - deploy
+  - notify
+
+variables:
+  DOCKER_REGISTRY: "localhost:5050"
+  NEXUS_REPO: "localhost:8081"
+  MAVEN_OPTS: "-Dmaven.repo.local=.m2/repository"
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: ""
+
+cache:
+  paths:
+    - .m2/repository/
+    - node_modules/
+    - .sonar/cache
+
+# Build stage
+build:
+  stage: build
+  image: maven:3.8-openjdk-11
+  script:
+    - mvn clean compile
+  artifacts:
+    paths:
+      - target/
+    expire_in: 1 hour
+
+build_docker:
+  stage: build
+  image: docker:latest
+  services:
+    - docker:dind
+  script:
+    - docker build -t $DOCKER_REGISTRY/$CI_PROJECT_PATH:$CI_COMMIT_SHA .
+    - docker push $DOCKER_REGISTRY/$CI_PROJECT_PATH:$CI_COMMIT_SHA
+  only:
+    - main
+    - develop
+
+# Test stage
+unit_tests:
+  stage: test
+  image: maven:3.8-openjdk-11
+  script:
+    - mvn test
+  artifacts:
+    reports:
+      junit:
+        - target/surefire-reports/TEST-*.xml
+    paths:
+      - target/surefire-reports/
+    expire_in: 1 week
+
+integration_tests:
+  stage: test
+  image: maven:3.8-openjdk-11
+  script:
+    - mvn verify -Pintegration-tests
+  artifacts:
+    reports:
+      junit:
+        - target/failsafe-reports/TEST-*.xml
+
+# Quality stage
+sonarqube_analysis:
+  stage: quality
+  image: sonarsource/sonar-scanner-cli:latest
+  variables:
+    SONAR_USER_HOME: "${CI_PROJECT_DIR}/.sonar"
+    GIT_DEPTH: "0"
+  cache:
+    key: "${CI_JOB_NAME}"
+    paths:
+      - .sonar/cache
+  script:
+    - sonar-scanner
+      -Dsonar.projectKey=$CI_PROJECT_NAME
+      -Dsonar.sources=src/main
+      -Dsonar.tests=src/test
+      -Dsonar.host.url=http://sonarqube:9000
+      -Dsonar.login=$SONAR_TOKEN
+      -Dsonar.qualitygate.wait=true
+  allow_failure: false
+  only:
+    - merge_requests
+    - main
+    - develop
+
+# Security stage
+security_scan:
+  stage: security
+  image: owasp/zap2docker-stable
+  script:
+    - mkdir -p /zap/wrk
+    - zap-baseline.py -t http://localhost:8080 -J zap-report.json || true
+  artifacts:
+    reports:
+      sast: zap-report.json
+    expire_in: 1 week
+  allow_failure: true
+
+dependency_scan:
+  stage: security
+  image: maven:3.8-openjdk-11
+  script:
+    - mvn org.owasp:dependency-check-maven:check
+  artifacts:
+    reports:
+      dependency_scanning: target/dependency-check-report.json
+    expire_in: 1 week
+  allow_failure: true
+
+# Package stage
+package:
+  stage: package
+  image: maven:3.8-openjdk-11
+  script:
+    - mvn package -DskipTests
+    - mvn deploy -DrepositoryId=nexus -Durl=http://$NEXUS_REPO/repository/maven-releases/
+  artifacts:
+    paths:
+      - target/*.jar
+    expire_in: 1 week
+  only:
+    - main
+
+# Deploy stage
+deploy_staging:
+  stage: deploy
+  image: docker:latest
+  services:
+    - docker:dind
+  script:
+    - docker pull $DOCKER_REGISTRY/$CI_PROJECT_PATH:$CI_COMMIT_SHA
+    - docker run -d --name staging-app -p 8000:8080 $DOCKER_REGISTRY/$CI_PROJECT_PATH:$CI_COMMIT_SHA
+  environment:
+    name: staging
+    url: http://localhost:8000
+  only:
+    - develop
+
+deploy_production:
+  stage: deploy
+  image: docker:latest
+  services:
+    - docker:dind
+  script:
+    - docker pull $DOCKER_REGISTRY/$CI_PROJECT_PATH:$CI_COMMIT_SHA
+    - docker run -d --name prod-app -p 8001:8080 $DOCKER_REGISTRY/$CI_PROJECT_PATH:$CI_COMMIT_SHA
+  environment:
+    name: production
+    url: http://localhost:8001
+  when: manual
+  only:
+    - main
+
+# Notification stage
+notify_success:
+  stage: notify
+  image: curlimages/curl:latest
+  script:
+    - |
+      curl -X POST http://webhook-receiver:9000/hooks/gitlab-pipeline-trigger \
+        -H "Content-Type: application/json" \
+        -H "X-Gitlab-Event: Pipeline Hook" \
+        -d "{\"status\": \"success\", \"project\": \"$CI_PROJECT_NAME\", \"branch\": \"$CI_COMMIT_REF_NAME\"}"
+  when: on_success
+
+notify_failure:
+  stage: notify
+  image: curlimages/curl:latest
+  script:
+    - |
+      curl -X POST http://webhook-receiver:9000/hooks/gitlab-pipeline-trigger \
+        -H "Content-Type: application/json" \
+        -H "X-Gitlab-Event: Pipeline Hook" \
+        -d "{\"status\": \"failure\", \"project\": \"$CI_PROJECT_NAME\", \"branch\": \"$CI_COMMIT_REF_NAME\"}"
+  when: on_failure

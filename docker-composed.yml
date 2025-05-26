@@ -1,0 +1,369 @@
+version: '3.8'
+
+services:
+  # GitLab Community Edition
+  gitlab:
+    image: gitlab/gitlab-ce:latest
+    container_name: gitlab-ce
+    hostname: 'localhost'
+    restart: unless-stopped
+    ports:
+      - '8080:80'
+      - '8443:443'
+      - '2222:22'
+      - '5050:5050'  # Container registry
+    environment:
+      GITLAB_OMNIBUS_CONFIG: |
+        external_url 'http://localhost:8080'
+        gitlab_rails['gitlab_shell_ssh_port'] = 2222
+        gitlab_rails['time_zone'] = 'America/New_York'
+        gitlab_rails['backup_keep_time'] = 604800
+        gitlab_rails['gitlab_email_enabled'] = false
+        
+        # Enable container registry
+        registry_external_url 'http://localhost:5050'
+        gitlab_rails['registry_enabled'] = true
+        registry['enable'] = true
+        
+        # Performance tuning
+        unicorn['worker_processes'] = 2
+        sidekiq['max_concurrency'] = 10
+        postgresql['shared_buffers'] = "128MB"
+        postgresql['max_worker_processes'] = 4
+        
+        # Disable unused services
+        prometheus_monitoring['enable'] = false
+        alertmanager['enable'] = false
+        grafana['enable'] = false
+    volumes:
+      - gitlab_config:/etc/gitlab
+      - gitlab_logs:/var/log/gitlab
+      - gitlab_data:/var/opt/gitlab
+      - gitlab_backups:/var/opt/gitlab/backups
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/-/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    networks:
+      - devops_network
+
+  # GitLab Runner for CI/CD
+  gitlab-runner:
+    image: gitlab/gitlab-runner:latest
+    container_name: gitlab-runner
+    restart: unless-stopped
+    volumes:
+      - gitlab_runner_config:/etc/gitlab-runner
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - devops_network
+    depends_on:
+      - gitlab
+
+  # PostgreSQL for SonarQube
+  sonarqube_db:
+    image: postgres:15-alpine
+    container_name: sonarqube-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: sonar
+      POSTGRES_PASSWORD: sonar_password_2024
+      POSTGRES_DB: sonarqube
+    volumes:
+      - postgresql_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sonar -d sonarqube"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - devops_network
+
+  # SonarQube Community Edition
+  sonarqube:
+    image: sonarqube:lts-community
+    container_name: sonarqube-ce
+    restart: unless-stopped
+    ports:
+      - '9000:9000'
+    environment:
+      SONAR_JDBC_URL: jdbc:postgresql://sonarqube_db:5432/sonarqube
+      SONAR_JDBC_USERNAME: sonar
+      SONAR_JDBC_PASSWORD: sonar_password_2024
+      SONAR_ES_BOOTSTRAP_CHECKS_DISABLE: 'true'
+      SONAR_SEARCH_JAVAADDITIONALOPTS: '-Dnode.store.allow_mmap=false'
+    volumes:
+      - sonarqube_data:/opt/sonarqube/data
+      - sonarqube_extensions:/opt/sonarqube/extensions
+      - sonarqube_logs:/opt/sonarqube/logs
+      - sonarqube_conf:/opt/sonarqube/conf
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    mem_limit: 2g
+    depends_on:
+      sonarqube_db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9000/api/system/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - devops_network
+
+  # Nexus Repository Manager for artifact storage
+  nexus:
+    image: sonatype/nexus3:latest
+    container_name: nexus-repository
+    restart: unless-stopped
+    ports:
+      - '8081:8081'
+    environment:
+      NEXUS_SECURITY_RANDOMPASSWORD: false
+    volumes:
+      - nexus_data:/nexus-data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/service/rest/v1/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    networks:
+      - devops_network
+
+  # Jenkins for additional CI/CD flexibility
+  jenkins:
+    image: jenkins/jenkins:lts
+    container_name: jenkins-master
+    restart: unless-stopped
+    ports:
+      - '8082:8080'
+      - '50000:50000'
+    environment:
+      JAVA_OPTS: '-Djenkins.install.runSetupWizard=false'
+    volumes:
+      - jenkins_home:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+    user: root  # Required for Docker socket access
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/login"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - devops_network
+
+  # Grafana for monitoring and dashboards
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana-monitoring
+    restart: unless-stopped
+    ports:
+      - '3000:3000'
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin123
+      GF_INSTALL_PLUGINS: grafana-clock-panel,grafana-simple-json-datasource
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - grafana_config:/etc/grafana
+    networks:
+      - devops_network
+
+  # Prometheus for metrics collection
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus-metrics
+    restart: unless-stopped
+    ports:
+      - '9090:9090'
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    volumes:
+      - prometheus_data:/prometheus
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    networks:
+      - devops_network
+
+  # Redis for caching and session storage
+  redis:
+    image: redis:7-alpine
+    container_name: redis-cache
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - devops_network
+
+  # MinIO for S3-compatible object storage
+  minio:
+    image: minio/minio:latest
+    container_name: minio-storage
+    restart: unless-stopped
+    ports:
+      - '9001:9000'  # API
+      - '9002:9001'  # Console
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - devops_network
+
+  # Portainer for Docker management
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: portainer-docker-mgmt
+    restart: unless-stopped
+    ports:
+      - '9443:9443'
+    command: -H unix:///var/run/docker.sock
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+    networks:
+      - devops_network
+
+  # Vault for secrets management
+  vault:
+    image: hashicorp/vault:latest
+    container_name: vault-secrets
+    restart: unless-stopped
+    ports:
+      - '8200:8200'
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: dev-root-token
+      VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+    cap_add:
+      - IPC_LOCK
+    volumes:
+      - vault_data:/vault/data
+    command: vault server -dev -dev-root-token-id="dev-root-token"
+    networks:
+      - devops_network
+
+  # Traefik reverse proxy for service discovery
+  traefik:
+    image: traefik:v3.0
+    container_name: traefik-proxy
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '8083:8080'  # Traefik dashboard
+    command:
+      - --api.insecure=true
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik_data:/data
+    networks:
+      - devops_network
+
+  # OWASP ZAP for security testing
+  zap:
+    image: owasp/zap2docker-stable
+    container_name: owasp-zap
+    restart: unless-stopped
+    ports:
+      - '8090:8080'
+    command: zap-webswing.sh
+    volumes:
+      - zap_data:/zap/wrk
+    networks:
+      - devops_network
+    profiles:
+      - security  # Only start when security profile is active
+
+  # SonarQube Quality Gate webhook receiver
+  webhook-receiver:
+    image: adnanh/webhook:latest
+    container_name: webhook-receiver
+    restart: unless-stopped
+    ports:
+      - '9000:9000'
+    volumes:
+      - ./hooks.json:/etc/webhook/hooks.json
+    command: ["-verbose", "-hooks=/etc/webhook/hooks.json", "-hotreload"]
+    networks:
+      - devops_network
+    profiles:
+      - webhooks
+
+  # Database backup service
+  backup:
+    image: postgres:15-alpine
+    container_name: db-backup-service
+    restart: unless-stopped
+    environment:
+      PGPASSWORD: sonar_password_2024
+    volumes:
+      - backup_data:/backups
+      - ./backup-script.sh:/backup-script.sh
+    command: /bin/sh -c "while true; do sleep 86400; done"  # Keep alive
+    networks:
+      - devops_network
+    profiles:
+      - backup
+
+# Named volumes for persistent storage
+volumes:
+  # GitLab volumes
+  gitlab_config:
+  gitlab_logs:
+  gitlab_data:
+  gitlab_backups:
+  gitlab_runner_config:
+  
+  # SonarQube volumes
+  sonarqube_data:
+  sonarqube_extensions:
+  sonarqube_logs:
+  sonarqube_conf:
+  postgresql_data:
+  
+  # Additional service volumes
+  nexus_data:
+  jenkins_home:
+  grafana_data:
+  grafana_config:
+  prometheus_data:
+  redis_data:
+  minio_data:
+  portainer_data:
+  vault_data:
+  traefik_data:
+  zap_data:
+  backup_data:
+
+# Networks
+networks:
+  devops_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

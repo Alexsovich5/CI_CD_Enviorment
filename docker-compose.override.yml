@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  gitlab:
+    environment:
+      GITLAB_OMNIBUS_CONFIG: |
+        external_url 'http://localhost:8080'
+        gitlab_rails['gitlab_shell_ssh_port'] = 2222
+        # Development-specific settings
+        gitlab_rails['auto_migrate'] = true
+        gitlab_rails['monitoring_whitelist'] = ['127.0.0.0/8', '172.0.0.0/8']
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.gitlab.rule=Host(`gitlab.local`)"
+      - "traefik.http.services.gitlab.loadbalancer.server.port=80"
+
+  sonarqube:
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.sonarqube.rule=Host(`sonar.local`)"
+      - "traefik.http.services.sonarqube.loadbalancer.server.port=9000"
+
+  nexus:
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.nexus.rule=Host(`nexus.local`)"
+      - "traefik.http.services.nexus.loadbalancer.server.port=8081"
+
+  jenkins:
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.jenkins.rule=Host(`jenkins.local`)"
+      - "traefik.http.services.jenkins.loadbalancer.server.port=8080"
+
+  grafana:
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.grafana.rule=Host(`grafana.local`)"
+      - "traefik.http.services.grafana.loadbalancer.server.port=3000"
