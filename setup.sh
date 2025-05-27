@@ -63,8 +63,15 @@ check_prerequisites() {
     fi
     
     # Check available disk space
-    AVAILABLE_SPACE=$(df -BG . | awk 'NR==2 {print $4}' | sed 's/G//')
-    if [ $AVAILABLE_SPACE -lt $REQUIRED_DISK_GB ]; then
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        # macOS
+        AVAILABLE_SPACE=$(df -g . | awk 'NR==2 {print $4}')
+    else
+        # Linux
+        AVAILABLE_SPACE=$(df -BG . | awk 'NR==2 {print $4}' | sed 's/G//')
+    fi
+    
+    if [ "$AVAILABLE_SPACE" -lt $REQUIRED_DISK_GB ]; then
         warn "Only ${AVAILABLE_SPACE}GB disk space available. Recommended: ${REQUIRED_DISK_GB}GB+"
     fi
     
