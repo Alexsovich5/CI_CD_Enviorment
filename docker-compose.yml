@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # GitLab Community Edition
   gitlab:
@@ -8,29 +6,29 @@ services:
     hostname: 'localhost'
     restart: unless-stopped
     ports:
-      - '8080:80'
+      - '8090:80' # Changed from 8080 to 8090 to avoid conflict
       - '8443:443'
       - '2222:22'
-      - '5050:5050'  # Container registry
+      - '5050:5050' # Container registry
     environment:
       GITLAB_OMNIBUS_CONFIG: |
-        external_url 'http://localhost:8080'
+        external_url 'http://localhost:8090' # Updated to match new port
         gitlab_rails['gitlab_shell_ssh_port'] = 2222
         gitlab_rails['time_zone'] = 'America/New_York'
         gitlab_rails['backup_keep_time'] = 604800
         gitlab_rails['gitlab_email_enabled'] = false
-        
+
         # Enable container registry
         registry_external_url 'http://localhost:5050'
         gitlab_rails['registry_enabled'] = true
         registry['enable'] = true
-        
+
         # Performance tuning
         unicorn['worker_processes'] = 2
         sidekiq['max_concurrency'] = 10
         postgresql['shared_buffers'] = "128MB"
         postgresql['max_worker_processes'] = 4
-        
+
         # Disable unused services
         prometheus_monitoring['enable'] = false
         alertmanager['enable'] = false
@@ -41,7 +39,7 @@ services:
       - gitlab_data:/var/opt/gitlab
       - gitlab_backups:/var/opt/gitlab/backups
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost/-/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost/-/health" ]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -74,7 +72,7 @@ services:
     volumes:
       - postgresql_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U sonar -d sonarqube"]
+      test: [ "CMD-SHELL", "pg_isready -U sonar -d sonarqube" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -107,11 +105,12 @@ services:
         soft: 65536
         hard: 65536
     mem_limit: 2g
+    user: "0:0" # Run as root to fix permission issues
     depends_on:
       sonarqube_db:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9000/api/system/status"]
+      test: [ "CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9000/api/system/status" ]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -131,7 +130,7 @@ services:
     volumes:
       - nexus_data:/nexus-data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8081/service/rest/v1/status"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8081/service/rest/v1/status" ]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -145,7 +144,7 @@ services:
     container_name: jenkins-master
     restart: unless-stopped
     ports:
-      - '8082:8080'
+      - '8084:8080' # Changed from 8082 to 8084 to avoid conflicts
       - '50000:50000'
     environment:
       JAVA_OPTS: '-Djenkins.install.runSetupWizard=false'
@@ -153,9 +152,9 @@ services:
       - jenkins_home:/var/jenkins_home
       - /var/run/docker.sock:/var/run/docker.sock
     # Use conditional user based on OS - for Linux compatibility
-    user: "${JENKINS_USER:-root}"  # Can be overridden via environment variable
+    user: "${JENKINS_USER:-root}" # Can be overridden via environment variable
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/login"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8080/login" ]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -218,8 +217,8 @@ services:
     container_name: minio-storage
     restart: unless-stopped
     ports:
-      - '9001:9000'  # API
-      - '9002:9001'  # Console
+      - '9001:9000' # API
+      - '9002:9001' # Console
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin123
@@ -227,7 +226,7 @@ services:
     volumes:
       - minio_data:/data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: [ "CMD", "curl", "-f", "http://localhost:9000/minio/health/live" ]
       interval: 30s
       timeout: 20s
       retries: 3
@@ -273,7 +272,7 @@ services:
     restart: unless-stopped
     ports:
       - '80:80'
-      - '8083:8080'  # Traefik dashboard
+      - '8083:8080' # Traefik dashboard
     command:
       - --api.insecure=true
       - --providers.docker=true
@@ -298,7 +297,7 @@ services:
     networks:
       - devops_network
     profiles:
-      - security  # Only start when security profile is active
+      - security # Only start when security profile is active
 
   # SonarQube Quality Gate webhook receiver
   webhook-receiver:
@@ -309,7 +308,7 @@ services:
       - '9000:9000'
     volumes:
       - ./hooks.json:/etc/webhook/hooks.json
-    command: ["-verbose", "-hooks=/etc/webhook/hooks.json", "-hotreload"]
+    command: [ "-verbose", "-hooks=/etc/webhook/hooks.json", "-hotreload" ]
     networks:
       - devops_network
     profiles:
@@ -325,7 +324,7 @@ services:
     volumes:
       - backup_data:/backups
       - ./backup-script.sh:/backup-script.sh
-    command: /bin/sh -c "while true; do sleep 86400; done"  # Keep alive
+    command: /bin/sh -c "while true; do sleep 86400; done" # Keep alive
     networks:
       - devops_network
     profiles:
@@ -339,14 +338,14 @@ volumes:
   gitlab_data:
   gitlab_backups:
   gitlab_runner_config:
-  
+
   # SonarQube volumes
   sonarqube_data:
   sonarqube_extensions:
   sonarqube_logs:
   sonarqube_conf:
   postgresql_data:
-  
+
   # Additional service volumes
   nexus_data:
   jenkins_home:
@@ -361,10 +360,10 @@ volumes:
   zap_data:
   backup_data:
 
-# Networks
+    # Networks
 networks:
   devops_network:
     driver: bridge
     ipam:
       config:
-        - subnet: 172.20.0.0/16
+        - subnet: 172.25.0.0/16

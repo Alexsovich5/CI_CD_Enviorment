@@ -1,10 +1,8 @@
-version: '3.8'
-
 services:
   gitlab:
     environment:
       GITLAB_OMNIBUS_CONFIG: |
-        external_url 'http://localhost:8080'
+        external_url 'http://localhost:8090'  # Updated to match new port
         gitlab_rails['gitlab_shell_ssh_port'] = 2222
         # Development-specific settings
         gitlab_rails['auto_migrate'] = true
