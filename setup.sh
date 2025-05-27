@@ -39,18 +39,41 @@ info() {
 check_prerequisites() {
     log "Checking prerequisites..."
     
+    # Detect OS
+    if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+        OS_TYPE="linux"
+    elif [[ "$OSTYPE" == "darwin"* ]]; then
+        OS_TYPE="macos"
+    else
+        OS_TYPE="unknown"
+    fi
+    
+    info "Detected OS: $OS_TYPE"
+    
     # Check if Docker is installed and running
     if ! command -v docker &> /dev/null; then
-        error "Docker is not installed. Please install Docker Desktop for Mac."
+        if [[ "$OS_TYPE" == "linux" ]]; then
+            error "Docker is not installed. Please install Docker Engine for Linux."
+        else
+            error "Docker is not installed. Please install Docker Desktop for Mac."
+        fi
     fi
     
     if ! docker info &> /dev/null; then
-        error "Docker is not running. Please start Docker Desktop."
+        if [[ "$OS_TYPE" == "linux" ]]; then
+            error "Docker is not running. Please start Docker service: sudo systemctl start docker"
+        else
+            error "Docker is not running. Please start Docker Desktop."
+        fi
     fi
     
     # Check if docker-compose is available
-    if ! command -v docker-compose &> /dev/null; then
-        error "docker-compose is not installed or not in PATH."
+    if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null; then
+        if [[ "$OS_TYPE" == "linux" ]]; then
+            error "docker-compose is not installed. Please install docker-compose or use 'docker compose' plugin."
+        else
+            error "docker-compose is not installed or not in PATH."
+        fi
     fi
     
     # Check Docker memory allocation
@@ -59,20 +82,35 @@ check_prerequisites() {
     
     if [ $DOCKER_MEMORY_GB -lt $REQUIRED_MEMORY_GB ]; then
         warn "Docker has only ${DOCKER_MEMORY_GB}GB allocated. Recommended: ${REQUIRED_MEMORY_GB}GB+"
-        warn "Increase Docker Desktop memory allocation in Preferences -> Resources"
+        if [[ "$OS_TYPE" == "linux" ]]; then
+            warn "On Linux, Docker uses host memory directly. Ensure your system has enough RAM."
+        else
+            warn "Increase Docker Desktop memory allocation in Preferences -> Resources"
+        fi
     fi
     
     # Check available disk space
-    if [[ "$OSTYPE" == "darwin"* ]]; then
+    if [[ "$OS_TYPE" == "linux" ]]; then
+        # Linux - use df with human readable and convert to GB
+        AVAILABLE_SPACE=$(df -BG . | awk 'NR==2 {print $4}' | sed 's/G//')
+    elif [[ "$OS_TYPE" == "macos" ]]; then
         # macOS
         AVAILABLE_SPACE=$(df -g . | awk 'NR==2 {print $4}')
     else
-        # Linux
-        AVAILABLE_SPACE=$(df -BG . | awk 'NR==2 {print $4}' | sed 's/G//')
+        # Fallback
+        AVAILABLE_SPACE=$(df -h . | awk 'NR==2 {print $4}' | sed 's/G//')
     fi
     
     if [ "$AVAILABLE_SPACE" -lt $REQUIRED_DISK_GB ]; then
         warn "Only ${AVAILABLE_SPACE}GB disk space available. Recommended: ${REQUIRED_DISK_GB}GB+"
+    fi
+    
+    # Check if user has proper permissions (Linux specific)
+    if [[ "$OS_TYPE" == "linux" ]]; then
+        if ! docker info &> /dev/null; then
+            warn "You may need to add your user to the docker group: sudo usermod -aG docker \$USER"
+            warn "Then log out and back in, or run: newgrp docker"
+        fi
     fi
     
     log "Prerequisites check completed ✅"

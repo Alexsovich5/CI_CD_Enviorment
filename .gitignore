@@ -31,3 +31,4 @@ temp/
 
 # Docker
 .docker/
+.env.linux

@@ -152,7 +152,8 @@ services:
     volumes:
       - jenkins_home:/var/jenkins_home
       - /var/run/docker.sock:/var/run/docker.sock
-    user: root  # Required for Docker socket access
+    # Use conditional user based on OS - for Linux compatibility
+    user: "${JENKINS_USER:-root}"  # Can be overridden via environment variable
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/login"]
       interval: 30s
