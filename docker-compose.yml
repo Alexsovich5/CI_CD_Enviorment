@@ -14,7 +14,7 @@ services:
       - '5050:5050' # Container registry
     environment:
       GITLAB_OMNIBUS_CONFIG: |
-        external_url 'http://localhost:8090' # Updated to match new port
+        external_url 'http://192.168.1.187:8090' # Enable remote access
         gitlab_rails['gitlab_shell_ssh_port'] = 2222
         gitlab_rails['time_zone'] = 'America/New_York'
         gitlab_rails['backup_keep_time'] = 604800
@@ -40,12 +40,14 @@ services:
       - gitlab_logs:/var/log/gitlab
       - gitlab_data:/var/opt/gitlab
       - gitlab_backups:/var/opt/gitlab/backups
+    privileged: true
+    shm_size: '256m'
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost/-/health" ]
-      interval: 30s
-      timeout: 10s
+      test: [ "CMD", "/opt/gitlab/bin/gitlab-healthcheck", "--fail", "--max-time", "10" ]
+      interval: 60s
+      timeout: 30s
       retries: 5
-      start_period: 120s
+      start_period: 180s
     networks:
       - devops_network
 
@@ -317,6 +319,24 @@ services:
     profiles:
       - security # Only start when security profile is active
 
+  # Homer Dashboard for service navigation
+  homer:
+    image: b4bz/homer:latest
+    container_name: homer-dashboard
+    restart: unless-stopped
+    environment:
+      - INIT_ASSETS=1
+    volumes:
+      - homer_data:/www/assets
+      - ./config/homer:/www/assets:ro
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.homer.rule=PathPrefix(`/`)"
+      - "traefik.http.routers.homer.priority=1"
+      - "traefik.http.services.homer.loadbalancer.server.port=8080"
+    networks:
+      - devops_network
+
   # SonarQube Quality Gate webhook receiver
   webhook-receiver:
     image: adnanh/webhook:latest
@@ -381,6 +401,7 @@ volumes:
   vault_data:
   traefik_data:
   zap_data:
+  homer_data:
   backup_data:
 
 # Networks
