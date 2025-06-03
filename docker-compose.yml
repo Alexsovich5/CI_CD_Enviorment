@@ -8,7 +8,7 @@ services:
     hostname: 'localhost'
     restart: unless-stopped
     ports:
-      - '8090:80' # Changed from 8080 to 8090 to avoid conflict
+      - '8090:8090' # Map host port 8090 to container port 8090
       - '8443:443'
       - '2222:22'
       - '5050:5050' # Container registry
