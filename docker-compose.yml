@@ -96,9 +96,9 @@ services:
       SONAR_JDBC_USERNAME: ${POSTGRES_USER:-sonar}
       SONAR_JDBC_PASSWORD: ${POSTGRES_PASSWORD:-sonar_default_pass}
       SONAR_ES_BOOTSTRAP_CHECKS_DISABLE: 'true'
-      SONAR_SEARCH_JAVAADDITIONALOPTS: '-Dnode.store.allow_mmap=false -Xms512m -Xmx512m'
+      SONAR_SEARCH_JAVAADDITIONALOPTS: '-Dnode.store.allow_mmap=false -Xms256m -Xmx256m'
       # Disable Elasticsearch security for development
-      SONAR_WEB_JAVAADDITIONALOPTS: '-Dsonar.es.bootstrap.checks.disable=true'
+      SONAR_WEB_JAVAADDITIONALOPTS: '-Dsonar.es.bootstrap.checks.disable=true -Xms256m -Xmx512m'
     volumes:
       - sonarqube_data:/opt/sonarqube/data
       - sonarqube_extensions:/opt/sonarqube/extensions
@@ -111,7 +111,7 @@ services:
       nofile:
         soft: 65536
         hard: 65536
-    mem_limit: 2g
+    mem_limit: 1g
     # Note: SonarQube needs to run as root due to embedded Elasticsearch requirements
     # This is a known limitation of the SonarQube Docker image
     depends_on:
