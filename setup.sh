@@ -200,7 +200,7 @@ start_services() {
     
     case $profile in
         "core")
-            docker-compose up -d gitlab sonarqube sonarqube_db nexus redis
+            docker-compose up -d gitlab sonarqube sonarqube_db nexus redis traefik homer
             ;;
         "monitoring")
             docker-compose --profile monitoring up -d
@@ -229,7 +229,7 @@ wait_for_services() {
     local max_attempts=60
     local attempt=1
     
-    services=("gitlab:8090/-/health" "sonarqube:9000/api/system/status" "nexus:8081/service/rest/v1/status")
+    services=("gitlab:8090/-/health" "sonarqube:9000/api/system/status" "nexus:8081/service/rest/v1/status" "homer:80/")
     
     for service in "${services[@]}"; do
         IFS=':' read -r container port_path <<< "$service"
@@ -293,6 +293,8 @@ get_credentials() {
     fi
     
     # Other services
+    echo "Homer Dashboard (http://localhost:80): No login required"
+    echo "Traefik Dashboard (http://localhost:8083): No login required"
     echo "Grafana (http://localhost:3000): admin/admin123"
     echo "MinIO (http://localhost:9002): minioadmin/minioadmin123"
     echo "Vault (http://localhost:8200): Token: dev-root-token"
@@ -308,6 +310,8 @@ health_check() {
         "GitLab:8090/-/health"
         "SonarQube:9000/api/system/status"
         "Nexus:8081/service/rest/v1/status"
+        "Homer Dashboard:80/"
+        "Traefik:8083/dashboard/"
         "Grafana:3000/api/health"
         "Jenkins:8084/login"
     )
