@@ -1,8 +1,13 @@
-# Environment and secrets
+# Environment variables and secrets
 .env
 .env.local
+.env.production
+.env.staging
+*.env
 *.key
 *.pem
+*.cert
+*.crt
 
 # Data and logs (these should be in Docker volumes)
 data/
@@ -12,23 +17,91 @@ volumes/
 
 # SSL certificates
 ssl/
+certs/
 
 # System files
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
 Thumbs.db
+ehthumbs.db
 
 # IDE files
 .vscode/
 .idea/
 *.swp
 *.swo
+*~
 
 # Temporary files
 *.tmp
 *.temp
 *.log
+*.backup
+*.bak
+*.orig
 temp/
+tmp/
 
 # Docker
 .docker/
 .env.linux
+
+# Build artifacts
+build/
+dist/
+target/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Cache files
+.cache/
+*.cache
+node_modules/
+
+# Test results and coverage
+test-results/
+coverage/
+coverage-reports/
+*.lcov
+.nyc_output
+
+# Security and vulnerability reports
+security-reports/
+vulnerability-reports/
+.sonar/
+.scannerwork/
+
+# Service-specific configurations (local overrides)
+config/*/local.*
+config/*/override.*
+*-local.yml
+*-local.yaml
+*-local.json
+*-local.properties
+*-local.conf
+
+# Local docker-compose overrides
+docker-compose.override.local.yml
+docker-compose.local.yml
+
+# Generated documentation
+docs/generated/
+docs/build/
+api-docs/generated/
+
+# Monitoring data
+monitoring/data/
+metrics/
+
+# Development and testing
+dev.*
+local.*
+*.local
+*.dump
+*.export
