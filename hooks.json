@@ -1,8 +1,0 @@
-[
-  {
-    "id": "gitlab-pipeline",
-    "execute-command": "/bin/echo",
-    "command-working-directory": "/tmp",
-    "response-message": "Pipeline webhook received"
-  }
-]
