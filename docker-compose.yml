@@ -297,9 +297,8 @@ services:
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false
       - --entrypoints.web.address=:80
-    user: "${TRAEFIK_USER:-1000}:${DOCKER_GID:-999}"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/run/docker.sock:/var/run/docker.sock:rw
       - traefik_data:/data
     networks:
       - devops_network
@@ -332,7 +331,8 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.homer.rule=PathPrefix(`/`)"
-      - "traefik.http.routers.homer.priority=1"
+      - "traefik.http.routers.homer.priority=100"
+      - "traefik.http.routers.homer.entrypoints=web"
       - "traefik.http.services.homer.loadbalancer.server.port=8080"
     networks:
       - devops_network
