@@ -149,9 +149,10 @@ EOF
     fi
     
     # Create hooks.json for webhooks
-    if [ ! -f "hooks.json" ]; then
+    mkdir -p webhooks
+    if [ ! -f "webhooks/hooks.json" ]; then
         log "Creating webhook configuration..."
-        cat > hooks.json << 'EOF'
+        cat > webhooks/hooks.json << 'EOF'
 [
   {
     "id": "gitlab-pipeline",
@@ -175,7 +176,7 @@ mkdir -p ${BACKUP_DIR}
 echo "Creating backup: ${DATE}"
 
 # Backup databases
-docker-compose exec -T sonarqube_db pg_dump -U sonar sonarqube > ${BACKUP_DIR}/sonarqube_backup.sql
+docker-compose exec -T sonarqube_db pg_dump -U ${POSTGRES_USER:-sonar} ${POSTGRES_DB:-sonarqube} > ${BACKUP_DIR}/sonarqube_backup.sql
 
 # Create GitLab backup
 docker-compose exec -T gitlab gitlab-backup create BACKUP=${DATE}
@@ -228,7 +229,7 @@ wait_for_services() {
     local max_attempts=60
     local attempt=1
     
-    services=("gitlab:8080/-/health" "sonarqube:9000/api/system/status" "nexus:8081/service/rest/v1/status")
+    services=("gitlab:8090/-/health" "sonarqube:9000/api/system/status" "nexus:8081/service/rest/v1/status")
     
     for service in "${services[@]}"; do
         IFS=':' read -r container port_path <<< "$service"
@@ -263,7 +264,7 @@ get_credentials() {
     echo
     
     # GitLab root password
-    echo "GitLab (http://localhost:8080):"
+    echo "GitLab (http://localhost:8090):"
     echo "  Username: root"
     echo -n "  Password: "
     docker-compose exec gitlab grep 'Password:' /etc/gitlab/initial_root_password 2>/dev/null | cut -d' ' -f2 || echo "Not ready yet"
@@ -284,7 +285,7 @@ get_credentials() {
     
     # Jenkins (if running)
     if docker-compose ps jenkins | grep -q "Up"; then
-        echo "Jenkins (http://localhost:8082):"
+        echo "Jenkins (http://localhost:8084):"
         echo "  Username: admin"
         echo -n "  Password: "
         docker-compose exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword 2>/dev/null || echo "Not ready yet"
@@ -304,11 +305,11 @@ health_check() {
     log "Performing health check..."
     
     local services=(
-        "GitLab:8080/-/health"
+        "GitLab:8090/-/health"
         "SonarQube:9000/api/system/status"
         "Nexus:8081/service/rest/v1/status"
         "Grafana:3000/api/health"
-        "Jenkins:8082/login"
+        "Jenkins:8084/login"
     )
     
     echo

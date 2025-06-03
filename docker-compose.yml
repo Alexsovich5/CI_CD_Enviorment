@@ -1,3 +1,5 @@
+version: '3.8'
+
 services:
   # GitLab Community Edition
   gitlab:
@@ -52,9 +54,10 @@ services:
     image: gitlab/gitlab-runner:latest
     container_name: gitlab-runner
     restart: unless-stopped
+    user: "${DOCKER_GID:-999}:${DOCKER_GID:-999}"
     volumes:
       - gitlab_runner_config:/etc/gitlab-runner
-      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/run/docker.sock:/var/run/docker.sock:rw
     networks:
       - devops_network
     depends_on:
@@ -66,9 +69,9 @@ services:
     container_name: sonarqube-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: sonar
-      POSTGRES_PASSWORD: sonar_password_2024
-      POSTGRES_DB: sonarqube
+      POSTGRES_USER: ${POSTGRES_USER:-sonar}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sonar_default_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-sonarqube}
     volumes:
       - postgresql_data:/var/lib/postgresql/data
     healthcheck:
@@ -79,7 +82,7 @@ services:
     networks:
       - devops_network
 
-  # SonarQube Community Edition
+  # SonarQube Community Edition  
   sonarqube:
     image: sonarqube:lts-community
     container_name: sonarqube-ce
@@ -87,11 +90,13 @@ services:
     ports:
       - '9000:9000'
     environment:
-      SONAR_JDBC_URL: jdbc:postgresql://sonarqube_db:5432/sonarqube
-      SONAR_JDBC_USERNAME: sonar
-      SONAR_JDBC_PASSWORD: sonar_password_2024
+      SONAR_JDBC_URL: jdbc:postgresql://sonarqube_db:5432/${POSTGRES_DB:-sonarqube}
+      SONAR_JDBC_USERNAME: ${POSTGRES_USER:-sonar}
+      SONAR_JDBC_PASSWORD: ${POSTGRES_PASSWORD:-sonar_default_pass}
       SONAR_ES_BOOTSTRAP_CHECKS_DISABLE: 'true'
-      SONAR_SEARCH_JAVAADDITIONALOPTS: '-Dnode.store.allow_mmap=false'
+      SONAR_SEARCH_JAVAADDITIONALOPTS: '-Dnode.store.allow_mmap=false -Xms512m -Xmx512m'
+      # Disable Elasticsearch security for development
+      SONAR_WEB_JAVAADDITIONALOPTS: '-Dsonar.es.bootstrap.checks.disable=true'
     volumes:
       - sonarqube_data:/opt/sonarqube/data
       - sonarqube_extensions:/opt/sonarqube/extensions
@@ -105,7 +110,8 @@ services:
         soft: 65536
         hard: 65536
     mem_limit: 2g
-    user: "0:0" # Run as root to fix permission issues
+    # Note: SonarQube needs to run as root due to embedded Elasticsearch requirements
+    # This is a known limitation of the SonarQube Docker image
     depends_on:
       sonarqube_db:
         condition: service_healthy
@@ -150,9 +156,8 @@ services:
       JAVA_OPTS: '-Djenkins.install.runSetupWizard=false'
     volumes:
       - jenkins_home:/var/jenkins_home
-      - /var/run/docker.sock:/var/run/docker.sock
-    # Use conditional user based on OS - for Linux compatibility
-    user: "${JENKINS_USER:-root}" # Can be overridden via environment variable
+      - /var/run/docker.sock:/var/run/docker.sock:rw
+    user: "${JENKINS_USER:-1000}:${DOCKER_GID:-999}" # Jenkins user with docker group access
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:8080/login" ]
       interval: 30s
@@ -170,7 +175,7 @@ services:
     ports:
       - '3000:3000'
     environment:
-      GF_SECURITY_ADMIN_PASSWORD: admin123
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin123}
       GF_INSTALL_PLUGINS: grafana-clock-panel,grafana-simple-json-datasource
     volumes:
       - grafana_data:/var/lib/grafana
@@ -184,7 +189,7 @@ services:
     container_name: prometheus-metrics
     restart: unless-stopped
     ports:
-      - '9090:9090'
+      - '9091:9090'  # Changed from 9090 to avoid port conflict
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
@@ -208,6 +213,11 @@ services:
     command: redis-server --appendonly yes
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
     networks:
       - devops_network
 
@@ -220,8 +230,8 @@ services:
       - '9001:9000' # API
       - '9002:9001' # Console
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin123
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
     command: server /data --console-address ":9001"
     volumes:
       - minio_data:/data
@@ -241,8 +251,9 @@ services:
     ports:
       - '9443:9443'
     command: -H unix:///var/run/docker.sock
+    user: "${PORTAINER_USER:-1000}:${DOCKER_GID:-999}"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/run/docker.sock:/var/run/docker.sock:ro
       - portainer_data:/data
     networks:
       - devops_network
@@ -255,13 +266,19 @@ services:
     ports:
       - '8200:8200'
     environment:
-      VAULT_DEV_ROOT_TOKEN_ID: dev-root-token
-      VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+      VAULT_ADDR: http://0.0.0.0:8200
     cap_add:
       - IPC_LOCK
     volumes:
       - vault_data:/vault/data
-    command: vault server -dev -dev-root-token-id="dev-root-token"
+      - ./config/vault/vault.hcl:/vault/config/vault.hcl:ro
+    command: vault server -config=/vault/config/vault.hcl
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8200/v1/sys/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
     networks:
       - devops_network
 
@@ -278,6 +295,7 @@ services:
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false
       - --entrypoints.web.address=:80
+    user: "${TRAEFIK_USER:-1000}:${DOCKER_GID:-999}"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - traefik_data:/data
@@ -286,11 +304,11 @@ services:
 
   # OWASP ZAP for security testing
   zap:
-    image: owasp/zap2docker-stable
+    image: zaproxy/zap-stable:latest
     container_name: owasp-zap
     restart: unless-stopped
     ports:
-      - '8090:8080'
+      - '8093:8080'  # Changed from 8092 to avoid port conflict
     command: zap-webswing.sh
     volumes:
       - zap_data:/zap/wrk
@@ -305,9 +323,9 @@ services:
     container_name: webhook-receiver
     restart: unless-stopped
     ports:
-      - '9000:9000'
+      - '9900:9000'
     volumes:
-      - ./hooks.json:/etc/webhook/hooks.json
+      - ./webhooks/hooks.json:/etc/webhook/hooks.json:ro
     command: [ "-verbose", "-hooks=/etc/webhook/hooks.json", "-hotreload" ]
     networks:
       - devops_network
@@ -320,11 +338,16 @@ services:
     container_name: db-backup-service
     restart: unless-stopped
     environment:
-      PGPASSWORD: sonar_password_2024
+      PGPASSWORD: ${POSTGRES_PASSWORD:-sonar_default_pass}
     volumes:
       - backup_data:/backups
-      - ./backup-script.sh:/backup-script.sh
+      - ./scripts/backup.sh:/backup-script.sh:ro
     command: /bin/sh -c "while true; do sleep 86400; done" # Keep alive
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "sonarqube_db", "-U", "sonar"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
     networks:
       - devops_network
     profiles:
@@ -360,7 +383,7 @@ volumes:
   zap_data:
   backup_data:
 
-    # Networks
+# Networks
 networks:
   devops_network:
     driver: bridge
