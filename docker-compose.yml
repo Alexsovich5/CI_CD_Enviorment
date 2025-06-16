@@ -201,7 +201,7 @@ services:
       - '--web.enable-lifecycle'
     volumes:
       - prometheus_data:/prometheus
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./config/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
     networks:
       - devops_network
 
@@ -253,9 +253,9 @@ services:
     ports:
       - '9443:9443'
     command: -H unix:///var/run/docker.sock
-    user: "${PORTAINER_USER:-1000}:${DOCKER_GID:-999}"
+    privileged: true
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/run/docker.sock:/var/run/docker.sock:rw
       - portainer_data:/data
     networks:
       - devops_network
