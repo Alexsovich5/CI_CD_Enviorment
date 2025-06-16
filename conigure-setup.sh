@@ -37,7 +37,7 @@ GITLAB_ROOT_TOKEN=""
 SONAR_TOKEN=""
 NEXUS_ADMIN_PASSWORD=""
 JENKINS_API_TOKEN=""
-VAULT_TOKEN="VAULT_TOKEN_PLACEHOLDER"
+VAULT_TOKEN="${VAULT_TOKEN:-}"
 
 # Configuration flags
 CONFIGURE_ALL=true
@@ -203,7 +203,7 @@ get_gitlab_credentials() {
     
     if [[ -z "$root_password" ]]; then
         log WARN "Could not retrieve GitLab root password automatically, using provided password"
-        root_password="GITLAB_PASSWORD_PLACEHOLDER"
+        root_password="${GITLAB_ROOT_PASSWORD:-}"
     fi
     
     GITLAB_ROOT_PASSWORD="$root_password"
@@ -1117,7 +1117,7 @@ configure_grafana() {
     
     local response
     response=$(curl -s -X POST "${GRAFANA_URL}/api/datasources" \
-        -u admin:admin123 \
+        -u admin:${GRAFANA_ADMIN_PASSWORD:-admin} \
         -H "Content-Type: application/json" \
         -d "$datasource_payload")
     
@@ -1171,7 +1171,7 @@ import_grafana_dashboard() {
     
     local import_response
     import_response=$(curl -s -X POST "${GRAFANA_URL}/api/dashboards/db" \
-        -u admin:admin123 \
+        -u admin:${GRAFANA_ADMIN_PASSWORD:-admin} \
         -H "Content-Type: application/json" \
         -d "$dashboard_json")
     

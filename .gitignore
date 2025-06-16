@@ -77,6 +77,15 @@ vulnerability-reports/
 .sonar/
 .scannerwork/
 
+# Credentials and sensitive files (CRITICAL - NEVER COMMIT)
+*credentials*
+*tokens*
+*secrets*
+vault-credentials.txt
+service-credentials.md
+configuration-*.log
+config-backup-*/
+
 # Service-specific configurations (local overrides)
 config/*/local.*
 config/*/override.*
