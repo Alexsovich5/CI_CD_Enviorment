@@ -177,7 +177,7 @@ services:
     ports:
       - '3000:3000'
     environment:
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GF_SECURITY_ADMIN_PASSWORD:-admin}
       GF_INSTALL_PLUGINS: grafana-clock-panel,grafana-simple-json-datasource
     volumes:
       - grafana_data:/var/lib/grafana
@@ -253,9 +253,9 @@ services:
     ports:
       - '9443:9443'
     command: -H unix:///var/run/docker.sock
-    privileged: true
+    user: "${PORTAINER_USER:-1000}:${DOCKER_GID:-999}"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:rw
+      - /var/run/docker.sock:/var/run/docker.sock:ro
       - portainer_data:/data
     networks:
       - devops_network
